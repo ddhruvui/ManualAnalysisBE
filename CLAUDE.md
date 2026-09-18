@@ -31,6 +31,7 @@ src/objectScanner.js  byte-level scanner: streams huge JSON arrays object by obj
 src/db.js             all SQL (node:sqlite): schema, inserts, keyset paging, article IDs
 src/sync.js           per-ticker tail sync + background full sync, job status
 src/gemini.js         on-demand Gemini summary + stateless follow-up Q&A for one article/ticker (fetch, no SDK, nothing stored)
+src/pins.js           pinned tickers in MongoDB Atlas (lazy connect, errors stripped of the URI)
 src/digest.js         period digests: article selection under a char budget + Gemini call with [n] citations, and stateless follow-up Q&A on a digest (day shipped)
 src/catalog.js        ticker list = cached S3 listing + data/_run.json counts + index state
 src/routes.js         /api routes + input validation
@@ -44,6 +45,11 @@ test/                 node:test suites
 - **Read-only S3:** only `ListObjectsV2`, `HeadObject`, `GetObject` — `src/s3.js` is the
   only file allowed to import from `@aws-sdk/client-s3`. No write/delete calls anywhere,
   including scripts and tests.
+- **Two stores, don't mix them:** `src/db.js` (SQLite, `.cache/`) is the disposable cache
+  of volume articles; `src/pins.js` (MongoDB Atlas) holds user preferences that must
+  survive a cache wipe and follow the user between devices. Article content never goes to
+  Atlas. `src/pins.js` is the only file that imports `mongodb`, and Mongo errors must pass
+  through `connectionFailed()` so the connection string never reaches a response.
 - **Config comes from `.env`** (git-ignored; template in `.env.example`). Don't Read/print
   `.env`; add any new variable to `.env.example` and to the table in `../CLAUDE.md`.
 - **Gemini:** only `src/gemini.js` talks to Google, only when the summary / ask endpoints

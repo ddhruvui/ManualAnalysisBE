@@ -5,6 +5,7 @@ import { activeJobs, ensureTicker, forceFullSync, getStatus } from './sync.js';
 import { headObject } from './s3.js';
 import { FOLLOW_UP_LIMITS, answerFollowUp, summariesEnabled, summarizeArticle } from './gemini.js';
 import { DIGEST_LIMITS, PERIODS, answerDigestFollowUp, createDigest, planDigest } from './digest.js';
+import { addPin, listPins, pinsEnabled, pinsStatus, removePin } from './pins.js';
 import { config } from './config.js';
 
 export const api = Router();
@@ -39,7 +40,22 @@ api.get('/health', async (_req, res) => {
     index: db.totals(),
     activeSyncs: activeJobs(),
     summaries: { enabled: summariesEnabled(), model: summariesEnabled() ? config.gemini.model : null },
+    pins: await pinsStatus(),
   });
+});
+
+// Pinned tickers live in MongoDB rather than the browser, so they follow the user across
+// browsers and devices. Mutations return the full list — it is tiny and keeps clients synced.
+api.get('/pins', async (_req, res) => {
+  res.json({ enabled: pinsEnabled(), tickers: await listPins() });
+});
+
+api.put('/pins/:ticker', async (req, res) => {
+  res.json({ enabled: true, tickers: await addPin(req.ticker) });
+});
+
+api.delete('/pins/:ticker', async (req, res) => {
+  res.json({ enabled: true, tickers: await removePin(req.ticker) });
 });
 
 api.get('/tickers', async (_req, res) => {

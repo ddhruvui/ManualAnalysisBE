@@ -22,6 +22,18 @@ if (missing.length) {
 
 const cacheDir = path.resolve(rootDir, process.env.CACHE_DIR || '.cache');
 
+// Atlas hands out connection strings with a "<db_password>" placeholder to fill in.
+function mongoUri() {
+  const uri = process.env.MONGO_URI;
+  if (!uri) return null;
+  const placeholder = /<(?:db_)?password>/i;
+  if (!placeholder.test(uri)) return uri;
+  if (!process.env.DB_PASSWORD) {
+    throw new Error('MONGO_URI contains a <db_password> placeholder but DB_PASSWORD is not set (see .env.example)');
+  }
+  return uri.replace(placeholder, encodeURIComponent(process.env.DB_PASSWORD));
+}
+
 export const config = {
   port: Number(process.env.PORT) || 4000,
   s3: {
@@ -40,6 +52,14 @@ export const config = {
   tailInitialBytes: 2 * 1024 * 1024,
   tailMaxBytes: 64 * 1024 * 1024,
   maxConcurrentFullSyncs: 2,
+  // Optional: user preferences (pinned tickers) shared across browsers and devices.
+  // Without MONGO_URI the pin endpoints answer 503 and the UI hides pinning.
+  mongo: {
+    uri: mongoUri(),
+    dbName: process.env.MONGO_DB || 'news_reader',
+    pinsCollection: 'pinned_tickers',
+    connectTimeoutMs: 8000,
+  },
   // Optional: article summaries. Without a key the summary endpoint answers 503.
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || null,
