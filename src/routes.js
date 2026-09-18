@@ -3,6 +3,7 @@ import * as db from './db.js';
 import { listTickers } from './catalog.js';
 import { activeJobs, ensureTicker, forceFullSync, getStatus } from './sync.js';
 import { headObject } from './s3.js';
+import { summariesEnabled, summarizeArticle } from './gemini.js';
 import { config } from './config.js';
 
 export const api = Router();
@@ -31,7 +32,13 @@ api.get('/health', async (_req, res) => {
   } catch (err) {
     volume = { reachable: false, error: err.message };
   }
-  res.json({ ok: volume.reachable, volume, index: db.totals(), activeSyncs: activeJobs() });
+  res.json({
+    ok: volume.reachable,
+    volume,
+    index: db.totals(),
+    activeSyncs: activeJobs(),
+    summaries: { enabled: summariesEnabled(), model: summariesEnabled() ? config.gemini.model : null },
+  });
 });
 
 api.get('/tickers', async (_req, res) => {
@@ -68,4 +75,15 @@ api.get('/news/:id', (req, res) => {
   const article = db.getArticle(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article not found in the local index' });
   res.json(article);
+});
+
+// Summarize one article for a focus ticker. POST because every call is a billable request
+// that sends the article text to Google; the result is returned, never stored.
+api.post('/news/:id/summary', async (req, res) => {
+  if (!ARTICLE_ID_RE.test(req.params.id)) throw badRequest('Invalid article id');
+  const ticker = String(req.query.ticker ?? '').toUpperCase();
+  if (!TICKER_RE.test(ticker)) throw badRequest('A valid ?ticker= is required');
+  const article = db.getArticle(req.params.id);
+  if (!article) return res.status(404).json({ error: 'Article not found in the local index' });
+  res.set('Cache-Control', 'no-store').json(await summarizeArticle(article, ticker));
 });

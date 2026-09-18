@@ -40,4 +40,11 @@ export const config = {
   tailInitialBytes: 2 * 1024 * 1024,
   tailMaxBytes: 64 * 1024 * 1024,
   maxConcurrentFullSyncs: 2,
+  // Optional: article summaries. Without a key the summary endpoint answers 503.
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY || null,
+    model: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+    timeoutMs: 60_000,
+    maxArticleChars: 40_000,
+  },
 };
