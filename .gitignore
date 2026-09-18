@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# dependencies / build
+node_modules/
+dist/
+build/
+coverage/
+
+# local cache / index of volume data (licensed content — never commit)
+.cache/
+data/
+*.sqlite
+*.sqlite-*
+*.db
+
+# logs / OS / editor
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
+
+# Claude Code local settings
+.claude/settings.local.json
