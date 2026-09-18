@@ -44,6 +44,13 @@ export const config = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || null,
     model: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+    // Tried in order when the main model is overloaded (503) or out of quota (429; quotas
+    // are per model). Defaults are Google's moving aliases, which cannot go stale the way
+    // pinned model ids do. Comma-separated; "none" disables.
+    fallbackModels: (process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-flash-latest,gemini-flash-lite-latest')
+      .split(',')
+      .map((m) => m.trim())
+      .filter((m) => m && m.toLowerCase() !== 'none'),
     timeoutMs: 60_000,
     maxArticleChars: 40_000,
   },

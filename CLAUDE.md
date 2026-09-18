@@ -31,6 +31,7 @@ src/objectScanner.js  byte-level scanner: streams huge JSON arrays object by obj
 src/db.js             all SQL (node:sqlite): schema, inserts, keyset paging, article IDs
 src/sync.js           per-ticker tail sync + background full sync, job status
 src/gemini.js         on-demand Gemini summary + stateless follow-up Q&A for one article/ticker (fetch, no SDK, nothing stored)
+src/digest.js         period digests: article selection under a char budget + Gemini call with [n] citations, and stateless follow-up Q&A on a digest (day shipped)
 src/catalog.js        ticker list = cached S3 listing + data/_run.json counts + index state
 src/routes.js         /api routes + input validation
 src/app.js, server.js Express wiring, error handler, listen on 127.0.0.1
@@ -46,7 +47,8 @@ test/                 node:test suites
 - **Config comes from `.env`** (git-ignored; template in `.env.example`). Don't Read/print
   `.env`; add any new variable to `.env.example` and to the table in `../CLAUDE.md`.
 - **Gemini:** only `src/gemini.js` talks to Google, only when the summary / ask endpoints
-  are hit (user action). Follow-up threads arrive from the client on every call — validate
+  / digest endpoints are hit (user action). `generate()` in gemini.js is the single call
+  path (retries + fallback model) — use it for any new AI feature. Follow-up threads arrive from the client on every call — validate
   them (`parseThread` in routes.js), never persist them. Key goes in the `x-goog-api-key` header — never in the URL or logs. Don't
   add bulk/background summarization or server-side storage of summaries without asking.
 - **Never load a whole news file into memory** — files reach 340 MB. Use `ObjectScanner`

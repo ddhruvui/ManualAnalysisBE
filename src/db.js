@@ -179,6 +179,31 @@ export function listHeadlines({ ticker, limit, before, q }) {
   return { items, nextCursor: hasMore ? items.at(-1).cursor : null };
 }
 
+/** Light rows (no article text) for every article of a ticker in [fromTs, toTs), oldest first. */
+export function listLightInRange(ticker, fromTs, toTs) {
+  return db
+    .prepare(
+      `SELECT a.id, a.ts, a.date, a.title, a.polarity, json_array_length(a.symbols) AS symbolCount
+       FROM ticker_articles ta JOIN articles a ON a.id = ta.article_id
+       WHERE ta.ticker = ? AND ta.ts >= ? AND ta.ts < ?
+       ORDER BY ta.ts ASC, ta.article_id ASC`,
+    )
+    .all(ticker, fromTs, toTs);
+}
+
+/** First `chars` characters of the text of the given articles, as Map(id -> text). */
+export function getContentSnippets(ids, chars) {
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 400) {
+    const chunk = ids.slice(i, i + 400);
+    const rows = db
+      .prepare(`SELECT id, substr(content, 1, ?) AS text FROM articles WHERE id IN (${chunk.map(() => '?').join(',')})`)
+      .all(chars, ...chunk);
+    for (const r of rows) out.set(r.id, r.text);
+  }
+  return out;
+}
+
 export function getArticle(id) {
   const row = stmts.getArticle.get(id);
   return row ? toHeadline(row) : null;

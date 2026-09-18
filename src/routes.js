@@ -4,6 +4,7 @@ import { listTickers } from './catalog.js';
 import { activeJobs, ensureTicker, forceFullSync, getStatus } from './sync.js';
 import { headObject } from './s3.js';
 import { FOLLOW_UP_LIMITS, answerFollowUp, summariesEnabled, summarizeArticle } from './gemini.js';
+import { DIGEST_LIMITS, PERIODS, answerDigestFollowUp, createDigest, planDigest } from './digest.js';
 import { config } from './config.js';
 
 export const api = Router();
@@ -114,4 +115,49 @@ api.post('/news/:id/ask', express.json({ limit: '200kb' }), async (req, res) => 
   if (!article) return res.status(404).json({ error: 'Article not found in the local index' });
   const summary = req.body?.summary && typeof req.body.summary === 'object' ? req.body.summary : null;
   res.set('Cache-Control', 'no-store').json(await answerFollowUp(article, ticker, { summary, messages }));
+});
+
+function parseRange(query) {
+  const from = Number(query.from);
+  const to = Number(query.to);
+  if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from >= to) {
+    throw badRequest('from and to must be epoch milliseconds with from < to');
+  }
+  if (to - from > DIGEST_LIMITS.maxRangeDays * 86_400_000) {
+    throw badRequest(`A digest can cover at most ${DIGEST_LIMITS.maxRangeDays} days`);
+  }
+  return { from, to };
+}
+
+// What a digest of [from, to) would read — counts only, no Gemini call. The frontend
+// computes the range so periods follow the user's local calendar.
+api.get('/tickers/:ticker/digest', async (req, res) => {
+  const { from, to } = parseRange(req.query);
+  const sync = await ensureTicker(req.ticker);
+  res.json({ ticker: req.ticker, from, to, ...planDigest(req.ticker, from, to).plan, sync });
+});
+
+function parsePeriod(query) {
+  const period = String(query.period ?? 'day');
+  if (!PERIODS.includes(period)) throw badRequest(`period must be one of ${PERIODS.join(', ')}`);
+  return period;
+}
+
+// Generate the digest: one billable Gemini call over many articles; never stored.
+api.post('/tickers/:ticker/digest', async (req, res) => {
+  const { from, to } = parseRange(req.query);
+  res.set('Cache-Control', 'no-store').json(await createDigest(req.ticker, parsePeriod(req.query), from, to));
+});
+
+// Follow-up question about a digest. Stateless: the body carries the digest that was shown
+// and the whole thread; the articles are re-read from the index for the same range.
+api.post('/tickers/:ticker/digest/ask', express.json({ limit: '300kb' }), async (req, res) => {
+  const { from, to } = parseRange(req.query);
+  const period = parsePeriod(req.query);
+  const messages = parseThread(req.body?.messages);
+  if (messages.length % 2 === 0) throw badRequest('The last message must be the user\'s question');
+  const digest = req.body?.digest && typeof req.body.digest === 'object' ? req.body.digest : null;
+  res
+    .set('Cache-Control', 'no-store')
+    .json(await answerDigestFollowUp(req.ticker, period, from, to, { digest, messages }));
 });
