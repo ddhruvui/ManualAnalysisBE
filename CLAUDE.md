@@ -30,7 +30,7 @@ src/s3.js             READ-ONLY S3 client + RunPod trailing-slash middleware
 src/objectScanner.js  byte-level scanner: streams huge JSON arrays object by object; parseTail()
 src/db.js             all SQL (node:sqlite): schema, inserts, keyset paging, article IDs
 src/sync.js           per-ticker tail sync + background full sync, job status
-src/gemini.js         on-demand Gemini summary of one article for a focus ticker (fetch, no SDK, nothing stored)
+src/gemini.js         on-demand Gemini summary + stateless follow-up Q&A for one article/ticker (fetch, no SDK, nothing stored)
 src/catalog.js        ticker list = cached S3 listing + data/_run.json counts + index state
 src/routes.js         /api routes + input validation
 src/app.js, server.js Express wiring, error handler, listen on 127.0.0.1
@@ -45,8 +45,9 @@ test/                 node:test suites
   including scripts and tests.
 - **Config comes from `.env`** (git-ignored; template in `.env.example`). Don't Read/print
   `.env`; add any new variable to `.env.example` and to the table in `../CLAUDE.md`.
-- **Gemini:** only `src/gemini.js` talks to Google, only when the summary endpoint is hit
-  (user click). Key goes in the `x-goog-api-key` header — never in the URL or logs. Don't
+- **Gemini:** only `src/gemini.js` talks to Google, only when the summary / ask endpoints
+  are hit (user action). Follow-up threads arrive from the client on every call — validate
+  them (`parseThread` in routes.js), never persist them. Key goes in the `x-goog-api-key` header — never in the URL or logs. Don't
   add bulk/background summarization or server-side storage of summaries without asking.
 - **Never load a whole news file into memory** — files reach 340 MB. Use `ObjectScanner`
   on the stream, or `parseTail` on a suffix Range read.

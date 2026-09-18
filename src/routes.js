@@ -1,9 +1,9 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import * as db from './db.js';
 import { listTickers } from './catalog.js';
 import { activeJobs, ensureTicker, forceFullSync, getStatus } from './sync.js';
 import { headObject } from './s3.js';
-import { summariesEnabled, summarizeArticle } from './gemini.js';
+import { FOLLOW_UP_LIMITS, answerFollowUp, summariesEnabled, summarizeArticle } from './gemini.js';
 import { config } from './config.js';
 
 export const api = Router();
@@ -86,4 +86,32 @@ api.post('/news/:id/summary', async (req, res) => {
   const article = db.getArticle(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article not found in the local index' });
   res.set('Cache-Control', 'no-store').json(await summarizeArticle(article, ticker));
+});
+
+function parseThread(messages) {
+  const { maxMessages, maxQuestionChars, maxAnswerChars } = FOLLOW_UP_LIMITS;
+  if (!Array.isArray(messages) || !messages.length) throw badRequest('messages must be a non-empty array');
+  if (messages.length > maxMessages) throw badRequest(`This conversation is too long (max ${maxMessages} messages) — start a new one`);
+  return messages.map((m, i) => {
+    const role = i % 2 === 0 ? 'user' : 'model'; // strict alternation, starting with the user
+    const text = typeof m?.text === 'string' ? m.text.trim() : '';
+    if (m?.role !== role) throw badRequest('messages must alternate user / model, starting and ending with user');
+    if (!text) throw badRequest('messages cannot be empty');
+    if (text.length > (role === 'user' ? maxQuestionChars : maxAnswerChars)) throw badRequest('A message is too long');
+    return { role, text };
+  });
+}
+
+// Follow-up question about an article. Stateless like the summary: the frontend sends the
+// summary it displayed plus the whole thread, ending with the new question.
+api.post('/news/:id/ask', express.json({ limit: '200kb' }), async (req, res) => {
+  if (!ARTICLE_ID_RE.test(req.params.id)) throw badRequest('Invalid article id');
+  const ticker = String(req.query.ticker ?? '').toUpperCase();
+  if (!TICKER_RE.test(ticker)) throw badRequest('A valid ?ticker= is required');
+  const messages = parseThread(req.body?.messages);
+  if (messages.length % 2 === 0) throw badRequest('The last message must be the user\'s question');
+  const article = db.getArticle(req.params.id);
+  if (!article) return res.status(404).json({ error: 'Article not found in the local index' });
+  const summary = req.body?.summary && typeof req.body.summary === 'object' ? req.body.summary : null;
+  res.set('Cache-Control', 'no-store').json(await answerFollowUp(article, ticker, { summary, messages }));
 });
