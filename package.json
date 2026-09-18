@@ -1,0 +1,21 @@
+{
+  "name": "news-reader-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Express API that reads news files from a RunPod network volume (read-only, S3-compatible API) and serves them to the React frontend.",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "node --watch --disable-warning=ExperimentalWarning src/server.js",
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "test": "node --test --disable-warning=ExperimentalWarning"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1135.0",
+    "dotenv": "^18.0.0",
+    "express": "^5.2.1"
+  }
+}
