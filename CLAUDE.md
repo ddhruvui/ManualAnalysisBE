@@ -50,6 +50,9 @@ test/                 node:test suites
   survive a cache wipe and follow the user between devices. Article content never goes to
   Atlas. `src/pins.js` is the only file that imports `mongodb`, and Mongo errors must pass
   through `connectionFailed()` so the connection string never reaches a response.
+- **CORS is opt-in:** `ALLOWED_ORIGINS` (empty by default) — this API serves licensed
+  article text from a loopback-bound server, so it must not become readable by any page the
+  user has open. Don't default it to `*`.
 - **Config comes from `.env`** (git-ignored; template in `.env.example`). Don't Read/print
   `.env`; add any new variable to `.env.example` and to the table in `../CLAUDE.md`.
 - **Gemini:** only `src/gemini.js` talks to Google, only when the summary / ask endpoints

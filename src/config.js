@@ -36,6 +36,14 @@ function mongoUri() {
 
 export const config = {
   port: Number(process.env.PORT) || 4000,
+  // Who may call this API from a browser on another origin. Empty (the default) sends no
+  // CORS headers at all, which is what a loopback-only local tool wants: this API hands
+  // out licensed vendor article text, so it must not be readable by any page the user
+  // happens to have open. Set it only when the frontend is served from another origin.
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
   s3: {
     endpoint: process.env.RUNPOD_S3_ENDPOINT,
     region: process.env.RUNPOD_S3_REGION,
