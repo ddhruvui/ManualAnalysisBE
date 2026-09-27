@@ -15,7 +15,23 @@ export function createApp() {
 
   app.use('/api', api);
 
-  app.use('/api', (_req, res) => {
+  // Hitting the base URL should say what this service is, not "Cannot GET /".
+  app.get('/', (_req, res) => {
+    res.json({
+      service: 'ManualAnalysis news API',
+      endpoints: [
+        'GET  /api/health',
+        'GET  /api/tickers',
+        'GET  /api/tickers/:ticker/news?limit&before&q',
+        'GET  /api/tickers/:ticker/sync   ·  POST /api/tickers/:ticker/sync',
+        'GET  /api/tickers/:ticker/digest?from&to  ·  POST (same) ·  POST /api/tickers/:ticker/digest/ask',
+        'GET  /api/news/:id  ·  POST /api/news/:id/summary?ticker  ·  POST /api/news/:id/ask?ticker',
+        'GET  /api/pins  ·  PUT /api/pins/:ticker  ·  DELETE /api/pins/:ticker',
+      ],
+    });
+  });
+
+  app.use((_req, res) => {
     res.status(404).json({ error: 'Not found' });
   });
 
