@@ -36,6 +36,7 @@ src/digest.js         period digests: article selection under a char budget + Ge
 src/catalog.js        ticker list = cached S3 listing + data/_run.json counts + index state
 src/routes.js         /api routes + input validation
 src/app.js, server.js Express wiring, error handler, listen on 127.0.0.1
+api/index.js          Vercel entry: exports the app (no listen); vercel.json rewrites /(.*) to it
 test/                 node:test suites
 .cache/               SQLite index (git-ignored, holds licensed content, safe to delete)
 ```
@@ -50,6 +51,11 @@ test/                 node:test suites
   survive a cache wipe and follow the user between devices. Article content never goes to
   Atlas. `src/pins.js` is the only file that imports `mongodb`, and Mongo errors must pass
   through `connectionFailed()` so the connection string never reaches a response.
+- **Serverless is a partial fit:** on Vercel only /tmp is writable and it is wiped between
+  cold starts, so `CACHE_DIR` defaults there (`config.js`) and the SQLite article index
+  starts empty on most requests. Pins, health, the ticker list and per-ticker latest
+  headlines work; older pages, arbitrary articles and digests need the persistent index,
+  so the full app wants a host with a disk. Don't design around the serverless case.
 - **CORS is opt-in:** `ALLOWED_ORIGINS` (empty by default) — this API serves licensed
   article text from a loopback-bound server, so it must not become readable by any page the
   user has open. Don't default it to `*`.

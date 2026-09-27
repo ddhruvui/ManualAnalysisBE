@@ -4,7 +4,7 @@
   "private": true,
   "description": "Express API that reads news files from a RunPod network volume (read-only, S3-compatible API) and serves them to the React frontend.",
   "type": "module",
-  "main": "src/server.js",
+  "main": "api/index.js",
   "engines": {
     "node": ">=22.13"
   },

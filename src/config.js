@@ -20,7 +20,11 @@ if (missing.length) {
   throw new Error(`Missing required env vars: ${missing.join(', ')} (see .env.example)`);
 }
 
-const cacheDir = path.resolve(rootDir, process.env.CACHE_DIR || '.cache');
+// Serverless hosts ship a read-only bundle with only /tmp writable, and wipe it between
+// cold starts. Defaulting there keeps the app from crashing on import; it does mean the
+// article index starts empty on most requests (see api/index.js).
+const defaultCacheDir = process.env.VERCEL ? '/tmp/news-reader-cache' : '.cache';
+const cacheDir = path.resolve(rootDir, process.env.CACHE_DIR || defaultCacheDir);
 
 // Atlas hands out connection strings with a "<db_password>" placeholder to fill in.
 function mongoUri() {
