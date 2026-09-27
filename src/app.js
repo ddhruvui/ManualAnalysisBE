@@ -11,6 +11,10 @@ export function createApp() {
   const { allowedOrigins } = config;
   if (allowedOrigins.length) {
     app.use(cors({ origin: allowedOrigins.includes('*') ? true : allowedOrigins }));
+  } else if (process.env.VERCEL) {
+    // Deployed but same-origin-only: a separately hosted frontend will be blocked by the
+    // browser with no clue in the response. Say so where the logs will show it.
+    console.warn('[cors] ALLOWED_ORIGINS is unset — browser calls from any other origin will be blocked. Set it to the frontend origin, then redeploy.');
   }
 
   app.use('/api', api);
