@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { createApp } from './app.js';
-import { closePins } from './pins.js';
+import { closeMongo } from './mongo.js';
 
 const app = createApp();
 
@@ -14,7 +14,7 @@ app.listen(config.port, '127.0.0.1', () => {
 // Let `node --watch` restarts and Ctrl-C exit promptly instead of waiting on Mongo sockets.
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, async () => {
-    await closePins();
+    await closeMongo();
     process.exit(0);
   });
 }

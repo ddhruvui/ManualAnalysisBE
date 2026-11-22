@@ -16,11 +16,12 @@ that holds RunPod credentials.
 npm run dev     # node --watch, http://localhost:4000 (loopback only)
 npm start       # same without watch
 npm test        # node:test, synthetic data only — no network
+npm run refresh-catalog   # rebuild the ticker list and save it to Atlas (--force, --dry-run)
 ```
 
 Requires Node ≥ 22.13 (built-in `node:sqlite`; scripts pass
-`--disable-warning=ExperimentalWarning`). Plain JavaScript, ESM, 3 runtime deps
-(express 5, @aws-sdk/client-s3, dotenv); Gemini is called with built-in `fetch`.
+`--disable-warning=ExperimentalWarning`). Plain JavaScript, ESM, 5 runtime deps
+(express 5, @aws-sdk/client-s3, mongodb, cors, dotenv); Gemini is called with built-in `fetch`.
 
 ## Layout
 
@@ -31,9 +32,14 @@ src/objectScanner.js  byte-level scanner: streams huge JSON arrays object by obj
 src/db.js             all SQL (node:sqlite): schema, inserts, keyset paging, article IDs
 src/sync.js           per-ticker tail sync + background full sync, job status
 src/gemini.js         on-demand Gemini summary + stateless follow-up Q&A for one article/ticker (fetch, no SDK, nothing stored)
-src/pins.js           pinned tickers in MongoDB Atlas (lazy connect, errors stripped of the URI)
+src/mongo.js          the one shared MongoDB client (lazy connect, errors stripped of the URI)
+src/pins.js           pinned tickers in MongoDB Atlas
 src/digest.js         period digests: article selection under a char budget + Gemini call with [n] citations, and stateless follow-up Q&A on a digest (day shipped)
-src/catalog.js        ticker list = cached S3 listing + data/_run.json counts + index state
+src/catalog.js        /api/tickers: Mongo snapshot (fallback: live listing) + index state
+src/catalogStore.js   build the catalog from the volume; read/write its Mongo snapshot
+src/catalogSchedule.js  05:00 New York (EST/EDT) once-a-day rule for the refresh job
+scripts/refresh-catalog.js  the daily job (also `npm run refresh-catalog`)
+.github/workflows/refresh-catalog.yml  runs it at 09:00 + 10:00 UTC; the script picks one
 src/routes.js         /api routes + input validation
 src/app.js, server.js Express wiring, error handler, listen on 127.0.0.1
 api/index.js          Vercel entry: exports the app (no listen); vercel.json rewrites /(.*) to it
@@ -47,10 +53,11 @@ test/                 node:test suites
   only file allowed to import from `@aws-sdk/client-s3`. No write/delete calls anywhere,
   including scripts and tests.
 - **Two stores, don't mix them:** `src/db.js` (SQLite, `.cache/`) is the disposable cache
-  of volume articles; `src/pins.js` (MongoDB Atlas) holds user preferences that must
-  survive a cache wipe and follow the user between devices. Article content never goes to
-  Atlas. `src/pins.js` is the only file that imports `mongodb`, and Mongo errors must pass
-  through `connectionFailed()` so the connection string never reaches a response.
+  of volume articles; MongoDB Atlas holds small documents that must
+  survive a cache wipe: pins (`src/pins.js`) and the ticker catalog snapshot
+  (`src/catalogStore.js`). Article content never goes to Atlas. `src/mongo.js` is the only
+  file that imports `mongodb`, and Mongo errors must pass through `redactMongoError()` so
+  the connection string never reaches a response or a log.
 - **Serverless is a partial fit:** on Vercel only /tmp is writable and it is wiped between
   cold starts, so `CACHE_DIR` defaults there (`config.js`) and the SQLite article index
   starts empty on most requests. Pins, health, the ticker list and per-ticker latest

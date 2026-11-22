@@ -1,0 +1,52 @@
+# Daily ticker-catalog refresh: lists the RunPod volume (read-only) and saves the ticker
+# list to MongoDB, so /api/tickers answers from Atlas instead of waiting on RunPod.
+#
+# Target: 05:00 New York time, all year. GitHub cron is UTC-only, so it fires at both
+# candidate hours and scripts/refresh-catalog.js keeps exactly one run per New York day:
+#   summer (EDT, UTC-4): 09:00 UTC = 05:00 → refreshes;  10:00 UTC = 06:00 → skips (done)
+#   winter (EST, UTC-5): 09:00 UTC = 04:00 → skips (early); 10:00 UTC = 05:00 → refreshes
+# GitHub may start scheduled runs late; the script's rules tolerate that.
+#
+# Needs repository secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, RUNPOD_VOLUME_ID,
+# MONGO_URI, DB_PASSWORD (same values as backend/.env). Optional repository variable:
+# MONGO_DB (default news_reader). Atlas must accept connections from GitHub's runners.
+name: Refresh ticker catalog
+
+on:
+  schedule:
+    - cron: '0 9 * * *'   # 05:00 EDT (summer)
+    - cron: '0 10 * * *'  # 05:00 EST (winter)
+  workflow_dispatch: # "Run workflow" button: refreshes immediately
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh-catalog
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --omit=dev
+
+      - name: Refresh catalog
+        run: node scripts/refresh-catalog.js ${{ github.event_name == 'workflow_dispatch' && '--force' || '' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          RUNPOD_VOLUME_ID: ${{ secrets.RUNPOD_VOLUME_ID }}
+          RUNPOD_S3_REGION: eu-ro-1
+          RUNPOD_S3_ENDPOINT: https://s3api-eu-ro-1.runpod.io
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          MONGO_DB: ${{ vars.MONGO_DB }}

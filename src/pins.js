@@ -4,9 +4,8 @@
 // One document per pinned ticker — `{_id: "GOOG", pinnedAt}` — so pinning and unpinning
 // are single-document operations with no read-modify-write race between devices.
 //
-// The connection string holds a password and must never reach logs or the frontend.
-import { MongoClient } from 'mongodb';
 import { config } from './config.js';
+import { mongoDb, mongoEnabled, redactMongoError } from './mongo.js';
 
 export class PinsError extends Error {
   constructor(message, status) {
@@ -15,33 +14,21 @@ export class PinsError extends Error {
   }
 }
 
-export const pinsEnabled = () => Boolean(config.mongo.uri);
+export const pinsEnabled = mongoEnabled;
 
-let clientPromise = null;
-
-/** Mongo's connection errors are long and can echo the URI; keep the actionable part. */
 function connectionFailed(err) {
-  const first = String(err?.message ?? err).split('\n')[0].slice(0, 200);
-  const redacted = first.replace(/mongodb(\+srv)?:\/\/[^\s,]*/gi, 'the configured cluster');
-  return new PinsError(`Cannot reach the pins database: ${redacted}`, 503);
+  return new PinsError(`Cannot reach the pins database: ${redactMongoError(err)}`, 503);
 }
 
 async function pins() {
-  if (!config.mongo.uri) {
+  if (!pinsEnabled()) {
     throw new PinsError('Pinned tickers need MongoDB — set MONGO_URI in backend/.env', 503);
   }
-  clientPromise ??= new MongoClient(config.mongo.uri, {
-    serverSelectionTimeoutMS: config.mongo.connectTimeoutMs,
-    connectTimeoutMS: config.mongo.connectTimeoutMs,
-  })
-    .connect()
-    .catch((err) => {
-      clientPromise = null; // let the next request retry instead of caching the failure
-      throw connectionFailed(err);
-    });
-
-  const client = await clientPromise;
-  return client.db(config.mongo.dbName).collection(config.mongo.pinsCollection);
+  try {
+    return (await mongoDb()).collection(config.mongo.pinsCollection);
+  } catch (err) {
+    throw connectionFailed(err);
+  }
 }
 
 async function run(operation) {
@@ -85,11 +72,4 @@ export async function pinsStatus() {
   } catch (err) {
     return { enabled: true, reachable: false, error: err.message };
   }
-}
-
-export async function closePins() {
-  const pending = clientPromise;
-  clientPromise = null;
-  if (!pending) return;
-  await pending.then((client) => client.close()).catch(() => {});
 }

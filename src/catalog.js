@@ -1,49 +1,29 @@
-// The list of tickers that have a news file, with sizes (from a cached S3 listing) and
-// vendor article counts (from the small acquisition manifest, so no file is scanned).
+// The ticker list served by /api/tickers.
+//
+// Normally it comes from the snapshot a daily GitHub Action saves in MongoDB (see
+// catalogStore.js), so the landing page never waits on RunPod — a cold listing of the
+// volume once took 33 s on Vercel. Only when that snapshot is unavailable (no MONGO_URI,
+// Atlas unreachable, or never written) is the catalog built live from the volume.
+// Per-instance index state (SQLite) is added at request time; it never goes to Mongo.
 import { config } from './config.js';
 import * as db from './db.js';
-import { getObjectJson, listObjects } from './s3.js';
+import { buildCatalog, readSnapshot } from './catalogStore.js';
+import { mongoEnabled, redactMongoError } from './mongo.js';
 
-let cache = null; // { at, tickers, manifest }
+let cache = null; // { at, builtAt, tickers, source, origin }
 let inflight = null;
 
 async function load() {
-  const [objects, manifest] = await Promise.all([
-    listObjects(config.newsPrefix),
-    // Counts are a nicety — the app works without the manifest.
-    getObjectJson(config.manifestKey).catch((err) => {
-      console.warn(`[catalog] manifest unavailable: ${err.message}`);
-      return null;
-    }),
-  ]);
-
-  const counts = new Map();
-  for (const r of manifest?.results ?? []) {
-    if (r.dataset !== 'news' || typeof r.symbol !== 'string') continue;
-    const dot = r.symbol.lastIndexOf('.');
-    counts.set(dot === -1 ? r.symbol : r.symbol.slice(0, dot), r.count ?? null);
+  if (mongoEnabled()) {
+    try {
+      const snapshot = await readSnapshot();
+      if (snapshot) return { at: Date.now(), ...snapshot, origin: 'snapshot' };
+      console.warn('[catalog] no snapshot in MongoDB yet — listing the volume (run scripts/refresh-catalog.js to seed it)');
+    } catch (err) {
+      console.warn(`[catalog] snapshot unavailable, listing the volume instead: ${redactMongoError(err)}`);
+    }
   }
-
-  const tickers = objects
-    .filter((o) => o.key.endsWith('.json'))
-    .map((o) => {
-      const ticker = o.key.slice(config.newsPrefix.length, -'.json'.length);
-      return {
-        ticker,
-        articleCount: counts.get(ticker) ?? null,
-        fileSize: o.size,
-        lastModified: o.lastModified,
-      };
-    })
-    .sort((a, b) => a.ticker.localeCompare(b.ticker));
-
-  return {
-    at: Date.now(),
-    tickers,
-    manifest: manifest
-      ? { vendor: manifest.vendor ?? null, endedAt: manifest.ended_at ?? null, newsFrom: manifest.news_from ?? null }
-      : null,
-  };
+  return { at: Date.now(), ...(await buildCatalog()), origin: 'volume' };
 }
 
 async function getCatalog() {
@@ -55,20 +35,21 @@ async function getCatalog() {
     cache = await inflight;
   } catch (err) {
     if (!cache) throw err; // nothing to fall back to
-    console.warn(`[catalog] refresh failed, serving stale listing: ${err.message}`);
+    console.warn(`[catalog] refresh failed, serving the previous list: ${err.message}`);
   }
   return cache;
 }
 
 export async function listTickers() {
-  const { tickers, manifest, at } = await getCatalog();
+  const { tickers, source, builtAt, origin } = await getCatalog();
   const indexed = db.indexedCounts();
   const fullySynced = new Set(
     db.allFileStates().filter((f) => f.full_synced_at).map((f) => f.ticker),
   );
   return {
-    source: manifest,
-    listedAt: new Date(at).toISOString(),
+    source,
+    listedAt: builtAt.toISOString(),
+    catalogOrigin: origin, // "snapshot" (MongoDB, daily) or "volume" (live fallback)
     tickers: tickers.map((t) => ({
       ...t,
       indexedCount: indexed.get(t.ticker) ?? 0,

@@ -70,6 +70,8 @@ export const config = {
     uri: mongoUri(),
     dbName: process.env.MONGO_DB || 'news_reader',
     pinsCollection: 'pinned_tickers',
+    // One document: the ticker list, refreshed daily by .github/workflows/refresh-catalog.yml.
+    catalogCollection: 'ticker_catalog',
     connectTimeoutMs: 8000,
   },
   // Optional: article summaries. Without a key the summary endpoint answers 503.
